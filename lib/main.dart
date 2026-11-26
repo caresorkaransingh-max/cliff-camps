@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:http/http.dart' as http;
 import 'package:material_ui/material_ui.dart';
@@ -83,6 +84,104 @@ const leaf = Color(0xFF1F5C3F);
 const gold = Color(0xFFE8B04B);
 const cream = Color(0xFFF7F3EA);
 const soft = [BoxShadow(color: Color(0x1A000000), blurRadius: 18, offset: Offset(0, 8))];
+
+// ---------- Responsive helpers (mobile + window/desktop) ----------
+
+bool isWide(BuildContext c) => MediaQuery.sizeOf(c).width >= 900;
+
+// Content ko beech mein max chaudai tak rokta hai
+class W extends StatelessWidget {
+  final Widget child;
+  final double max;
+  const W(this.child, {super.key, this.max = 1100});
+
+  @override
+  Widget build(BuildContext context) => Center(child: ConstrainedBox(constraints: BoxConstraints(maxWidth: max), child: child));
+}
+
+// Window mein mouse se drag/scroll bhi chale
+class AppScroll extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {PointerDeviceKind.touch, PointerDeviceKind.mouse, PointerDeviceKind.trackpad};
+}
+
+// Tents ko 1 / 2 / 3 column mein dikhata hai (screen ke hisaab se)
+class TentGrid extends StatelessWidget {
+  final List<int> ids;
+  const TentGrid(this.ids, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final cols = c.maxWidth >= 900 ? 3 : (c.maxWidth >= 600 ? 2 : 1);
+        if (cols == 1) return Column(children: [for (final i in ids) TentCard(i)]);
+        final rows = <Widget>[];
+        for (var st = 0; st < ids.length; st += cols) {
+          final end = st + cols > ids.length ? ids.length : st + cols;
+          final chunk = ids.sublist(st, end);
+          rows.add(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var k = 0; k < cols; k++) ...[
+                  Expanded(child: k < chunk.length ? TentCard(chunk[k]) : const SizedBox()),
+                  if (k < cols - 1) const SizedBox(width: 18),
+                ],
+              ],
+            ),
+          );
+        }
+        return Column(children: rows);
+      },
+    );
+  }
+}
+
+// Window mein upar ka menu bar
+class DesktopBar extends StatelessWidget {
+  final int i;
+  const DesktopBar(this.i, {super.key});
+
+  static const names = ['Home', 'Stay', 'Gallery', 'Book', 'More'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: green,
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: W(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              const Brand(size: 44),
+              const Spacer(),
+              for (int k = 0; k < names.length; k++)
+                TextButton(
+                  onPressed: () => tab.value = k,
+                  child: Text(
+                    names[k],
+                    style: TextStyle(
+                      color: i == k ? gold : Colors.white,
+                      fontWeight: i == k ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 12),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: gold, foregroundColor: Colors.black),
+                onPressed: () => tab.value = 3,
+                child: const Text('Book now', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class Tent {
   final String name, desc, tag;
@@ -298,8 +397,11 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final wide = isWide(context);
+    final w = MediaQuery.sizeOf(context).width;
+    final side = w > 1132 ? (w - 1100) / 2 + 16 : 16.0;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      padding: EdgeInsets.fromLTRB(side, 0, side, 18),
       decoration: const BoxDecoration(
         color: green,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
@@ -309,15 +411,17 @@ class PageHeader extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Brand(size: 36),
-                const Spacer(),
-                IconButton(onPressed: () => open('tel:$phoneAshwani'), icon: const Icon(Icons.call, color: gold)),
-              ],
-            ),
-            const SizedBox(height: 14),
+            SizedBox(height: wide ? 24 : 10),
+            if (!wide) ...[
+              Row(
+                children: [
+                  const Brand(size: 36),
+                  const Spacer(),
+                  IconButton(onPressed: () => open('tel:$phoneAshwani'), icon: const Icon(Icons.call, color: gold)),
+                ],
+              ),
+              const SizedBox(height: 14),
+            ],
             Text(title, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
             if (subtitle != null) Text(subtitle!, style: const TextStyle(color: Colors.white70)),
             if (bottom != null) ...[const SizedBox(height: 14), bottom!],
@@ -497,12 +601,7 @@ class CampApp extends StatelessWidget {
         scaffoldBackgroundColor: cream,
         navigationBarTheme: const NavigationBarThemeData(backgroundColor: Colors.white, indicatorColor: Color(0x44E8B04B)),
       ),
-      builder: (context, child) => ColoredBox(
-        color: const Color(0xFFDDDDDD),
-        child: Center(
-          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 480), child: child),
-        ),
-      ),
+      scrollBehavior: AppScroll(),
       home: const Root(),
     );
   }
@@ -514,21 +613,26 @@ class Root extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const pages = <Widget>[HomePage(), StayPage(), GalleryPage(), BookPage(), MorePage()];
+    final wide = isWide(context);
     return ValueListenableBuilder<int>(
       valueListenable: tab,
       builder: (context, i, _) => Scaffold(
-        body: IndexedStack(index: i, children: pages),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: i,
-          onDestinationSelected: (v) => tab.value = v,
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-            NavigationDestination(icon: Icon(Icons.holiday_village_outlined), selectedIcon: Icon(Icons.holiday_village), label: 'Stay'),
-            NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: 'Gallery'),
-            NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: 'Book'),
-            NavigationDestination(icon: Icon(Icons.menu), selectedIcon: Icon(Icons.menu_open), label: 'More'),
-          ],
-        ),
+        body: wide
+            ? Column(children: [DesktopBar(i), Expanded(child: IndexedStack(index: i, children: pages))])
+            : IndexedStack(index: i, children: pages),
+        bottomNavigationBar: wide
+            ? null
+            : NavigationBar(
+                selectedIndex: i,
+                onDestinationSelected: (v) => tab.value = v,
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+                  NavigationDestination(icon: Icon(Icons.holiday_village_outlined), selectedIcon: Icon(Icons.holiday_village), label: 'Stay'),
+                  NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: 'Gallery'),
+                  NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: 'Book'),
+                  NavigationDestination(icon: Icon(Icons.menu), selectedIcon: Icon(Icons.menu_open), label: 'More'),
+                ],
+              ),
       ),
     );
   }
@@ -573,8 +677,11 @@ class _HeroBannerState extends State<HeroBanner> {
 
   @override
   Widget build(BuildContext context) {
+    final wide = isWide(context);
+    final w = MediaQuery.sizeOf(context).width;
+    final side = w > 1140 ? (w - 1100) / 2 + 20 : 20.0;
     return SizedBox(
-      height: 520,
+      height: wide ? 600 : 520,
       child: Stack(
         children: [
           Positioned.fill(
@@ -599,7 +706,7 @@ class _HeroBannerState extends State<HeroBanner> {
               ),
             ),
           ),
-          Positioned(
+          if (!wide) Positioned(
             top: 0,
             left: 16,
             right: 16,
@@ -621,10 +728,14 @@ class _HeroBannerState extends State<HeroBanner> {
             ),
           ),
           Positioned(
-            left: 20,
-            right: 20,
+            left: side,
+            right: side,
             bottom: 52,
-            child: Column(
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 620),
+                child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -667,7 +778,7 @@ class _HeroBannerState extends State<HeroBanner> {
                   ],
                 ),
               ],
-            ),
+            ))),
           ),
         ],
       ),
@@ -776,10 +887,12 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final wide = isWide(context);
     return ListView(
       padding: EdgeInsets.zero,
       children: [
         const HeroBanner(),
+        W(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Transform.translate(offset: const Offset(0, -28), child: const InfoStrip()),
         const SectionTitle('What makes it special'),
         SizedBox(
@@ -814,7 +927,7 @@ class HomePage extends StatelessWidget {
         SectionTitle('Our tents', action: 'See all', onAction: () => tab.value = 1),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(children: [TentCard(0), TentCard(1)]),
+          child: TentGrid(wide ? const [0, 1, 2] : const [0, 1]),
         ),
         Container(
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -877,6 +990,7 @@ class HomePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 28),
+        ])),
       ],
     );
   }
@@ -952,6 +1066,7 @@ class _StayPageState extends State<StayPage> {
                 ),
               ),
             ),
+            W(Column(children: [
             SizedBox(
               height: 56,
               child: ListView(
@@ -987,8 +1102,9 @@ class _StayPageState extends State<StayPage> {
                       padding: EdgeInsets.all(40),
                       child: Center(child: Text('Koi tent nahi mila. Doosra word try karo.')),
                     )
-                  : Column(children: [for (final i in idx) TentCard(i)]),
+                  : TentGrid(idx),
             ),
+            ])),
           ],
         );
       },
@@ -1024,7 +1140,7 @@ class TentPage extends StatelessWidget {
           ),
           SliverList(
             delegate: SliverChildListDelegate([
-              Padding(
+              W(Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1062,7 +1178,7 @@ class TentPage extends StatelessWidget {
                     const SizedBox(height: 90),
                   ],
                 ),
-              ),
+              ), max: 800),
             ]),
           ),
         ],
@@ -1106,10 +1222,10 @@ class GalleryPage extends StatelessWidget {
       padding: EdgeInsets.zero,
       children: [
         const PageHeader('Gallery', subtitle: 'Tap a photo to zoom'),
-        Padding(
+        W(Padding(
           padding: const EdgeInsets.all(16),
           child: GridView.count(
-            crossAxisCount: 2,
+            crossAxisCount: MediaQuery.sizeOf(context).width >= 900 ? 4 : (MediaQuery.sizeOf(context).width >= 600 ? 3 : 2),
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
             shrinkWrap: true,
@@ -1122,7 +1238,7 @@ class GalleryPage extends StatelessWidget {
                 ),
             ],
           ),
-        ),
+        )),
       ],
     );
   }
@@ -1277,7 +1393,7 @@ class _BookPageState extends State<BookPage> {
       padding: EdgeInsets.zero,
       children: [
         const PageHeader('Book your stay', subtitle: 'Enquiry goes straight to our WhatsApp'),
-        Padding(
+        W(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1439,7 +1555,7 @@ class _BookPageState extends State<BookPage> {
               const SizedBox(height: 30),
             ],
           ),
-        ),
+        ), max: 640),
       ],
     );
   }
@@ -1468,7 +1584,7 @@ class MorePage extends StatelessWidget {
       padding: EdgeInsets.zero,
       children: [
         const PageHeader('More', subtitle: 'Contact, saved tents and your enquiries'),
-        Padding(
+        W(Padding(
           padding: const EdgeInsets.all(16),
           child: ListenableBuilder(
             listenable: db,
@@ -1506,7 +1622,7 @@ class MorePage extends StatelessWidget {
               ],
             ),
           ),
-        ),
+        ), max: 640),
       ],
     );
   }
@@ -1524,7 +1640,7 @@ class SavedPage extends StatelessWidget {
         builder: (context, _) {
           final ids = db.fav.toList()..sort();
           if (ids.isEmpty) return const Center(child: Text('Heart dabake tent save karo'));
-          return ListView(padding: const EdgeInsets.all(16), children: [for (final i in ids) TentCard(i)]);
+          return SingleChildScrollView(padding: const EdgeInsets.all(16), child: W(TentGrid(ids)));
         },
       ),
     );
@@ -1538,7 +1654,7 @@ class TripsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('My enquiries'), backgroundColor: green, foregroundColor: Colors.white),
-      body: ListenableBuilder(
+      body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 700), child: ListenableBuilder(
         listenable: db,
         builder: (context, _) {
           if (db.trips.isEmpty) return const Center(child: Text('Abhi koi enquiry nahi bheji'));
@@ -1578,7 +1694,7 @@ class TripsPage extends StatelessWidget {
             ],
           );
         },
-      ),
+      ))),
     );
   }
 }
