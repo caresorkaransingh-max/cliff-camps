@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,11 +28,11 @@ const maxPerTent = 3; // ek tent mein maximum guests
 // Tents - SAMPLE hain (naam, description, price/night, facilities, photo numbers, tag). Asli bharo.
 const tents = [
   Tent('Riverside Swiss Tent', 'Sleep to the sound of the river in a cozy Swiss tent right on the bank.', 2500,
-      ['River view', 'Comfy bedding', 'Bonfire on request'], [0, 1, 2], tag: 'Most loved'),
+      ['River view', 'Comfy bedding', 'Bonfire on request'], [0, 3, 12], tag: 'Most loved'),
   Tent('Cliff View Swiss Tent', 'Wake up to snow views and wild goats on the hills around the camp.', 3000,
-      ['Snow view', 'Private sit-out', 'Bonfire on request'], [2, 3, 0], tag: 'Best views'),
+      ['Snow view', 'Private sit-out', 'Bonfire on request'], [8, 2, 7], tag: 'Best views'),
   Tent('Garden Swiss Tent', 'A quiet tent away from the path, perfect for a calm and private stay.', 2200,
-      ['Quiet corner', 'Comfy bedding', 'Tea on request'], [3, 4, 1]),
+      ['Quiet corner', 'Comfy bedding', 'Tea on request'], [4, 1, 5]),
 ];
 
 // Add-ons (naam, price, unit: 'person' = har guest, 'night' = har raat, 'stay' = ek baar). SAMPLE prices.
@@ -44,7 +45,62 @@ const addonList = [
 
 // Photos. Apni photo ka link ya 'assets/images/tent1.jpg' likh sakte ho
 String px(int id) => 'https://images.pexels.com/photos/$id/pexels-photo-$id.jpeg?auto=compress&cs=tinysrgb&w=900';
-final photos = <String>[px(31705302), px(31705293), px(31705292), px(31705291), px(31666058)];
+// PHOTOS: aapki website ki asli photos (assets/images folder mein hain)
+const _img = 'assets/images';
+final photos = <String>[
+  '$_img/riverside-camp-wide.webp', // 0
+  '$_img/tent-interior.webp', // 1
+  '$_img/winter-tents.webp', // 2
+  '$_img/camp-tents-row.webp', // 3
+  '$_img/camp-yellow-tent.webp', // 4
+  '$_img/camp-tent-window.webp', // 5
+  '$_img/camp-lamp.webp', // 6
+  '$_img/barot-valley.webp', // 7
+  '$_img/winter-camp.webp', // 8
+  '$_img/trout.webp', // 9
+  '$_img/winter-bonfire.webp', // 10
+  '$_img/winter-chairs.webp', // 11
+  '$_img/camp-meadow.webp', // 12
+  '$_img/camp-food-hub.webp', // 13
+  '$_img/camp-buddha.webp', // 14
+];
+
+// Har photo ka chhota naam (upar wali list ke order mein)
+const captions = [
+  'Riverside camp, Barot valley',
+  'Cozy Swiss tent interior',
+  'Tents under fresh snow',
+  'Our tents by the river',
+  'Yellow Swiss tent',
+  'Wake up to forest views',
+  'Warm evening lights',
+  'Barot valley & mountains',
+  'Coffee with a snow view',
+  'Fresh trout from our chef',
+  'Winter bonfire nights',
+  'Snow-day seating',
+  'Camp meadow by the hills',
+  'Cliff Camp food hub',
+  'Peaceful corners at camp',
+];
+
+// Home ke upar (window mein) chalne wali photos - sirf badi landscape photos
+const heroPics = [0, 1, 7];
+
+// VIDEOS (assets/videos folder mein): naam, video file, poster photo
+class Reel {
+  final String title, src, poster;
+  const Reel(this.title, this.src, this.poster);
+}
+
+const reels = [
+  Reel('Barot Valley in summer', 'assets/videos/summer-barot-valley.mp4', 'assets/images/poster-summer.jpg'),
+  Reel('January snow at the camp', 'assets/videos/snow-january.mp4', 'assets/images/poster-january.jpg'),
+  Reel('A snowy night at camp', 'assets/videos/snow-night.mp4', 'assets/images/poster-night.jpg'),
+];
+
+// Mobile par Home ke peeche chalne wala video (muted, loop). Khaali '' = photo slideshow.
+const heroVideo = 'assets/videos/summer-barot-valley.mp4';
 
 // Coupons: DIRECT5 = 5% off, CAMP10 = 10% off (2+ nights)
 int couponPct(String code, int nights) {
@@ -72,10 +128,10 @@ const faqs = [
 ];
 
 const experiences = [
-  ('River white noise', 'Fall asleep to the sound of the river.', Icons.waves),
-  ('Snow views', 'Wake up to snow-capped mountains.', Icons.ac_unit),
-  ('Wild goats', 'Spot wild goats on the hillsides.', Icons.pets),
-  ('Trout treat', 'Fresh trout cooked by our in-house chef.', Icons.restaurant),
+  ('River white noise', 'Fall asleep to the sound of the river.', Icons.waves, 0),
+  ('Snow views', 'Wake up to snow-capped mountains.', Icons.ac_unit, 2),
+  ('Wild goats', 'Spot wild goats on the hillsides.', Icons.pets, 12),
+  ('Trout treat', 'Fresh trout cooked by our in-house chef.', Icons.restaurant, 9),
 ];
 // =============================================================
 
@@ -585,6 +641,134 @@ class TentCard extends StatelessWidget {
   }
 }
 
+// ---------- Video player ----------
+
+class VideoBox extends StatefulWidget {
+  final String src;
+  final String? poster;
+  final bool autoplay, loop, muted, controls, lazy;
+  const VideoBox(this.src, {super.key, this.poster, this.autoplay = false, this.loop = false, this.muted = false, this.controls = true, this.lazy = false});
+
+  @override
+  State<VideoBox> createState() => _VideoBoxState();
+}
+
+class _VideoBoxState extends State<VideoBox> {
+  VideoPlayerController? c;
+  bool started = false;
+  bool ready = false;
+  bool failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.lazy) _start();
+  }
+
+  void _start() {
+    started = true;
+    final ctl = widget.src.startsWith('http')
+        ? VideoPlayerController.networkUrl(Uri.parse(widget.src))
+        : VideoPlayerController.asset(widget.src);
+    c = ctl;
+    ctl.initialize().then((_) {
+      if (!mounted) return;
+      ctl.setLooping(widget.loop);
+      ctl.setVolume(widget.muted ? 0 : 1);
+      if (widget.autoplay || widget.lazy) ctl.play();
+      setState(() => ready = true);
+    }).catchError((_) {
+      if (mounted) setState(() => failed = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    c?.dispose();
+    super.dispose();
+  }
+
+  Widget get cover => widget.poster != null
+      ? Pic(widget.poster!)
+      : Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(colors: [leaf, green], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          ),
+        );
+
+  Widget playIcon() => const Center(
+        child: CircleAvatar(radius: 28, backgroundColor: Colors.black54, child: Icon(Icons.play_arrow, color: Colors.white, size: 34)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    if (!started) {
+      return GestureDetector(
+        onTap: () => setState(_start),
+        child: Stack(fit: StackFit.expand, children: [cover, playIcon()]),
+      );
+    }
+    if (failed) {
+      return Stack(fit: StackFit.expand, children: [cover, const Center(child: Icon(Icons.videocam_off, color: Colors.white70, size: 40))]);
+    }
+    if (!ready || c == null) {
+      return Stack(fit: StackFit.expand, children: [cover, const Center(child: CircularProgressIndicator(color: gold))]);
+    }
+    final ctl = c!;
+    return GestureDetector(
+      onTap: widget.controls ? () => ctl.value.isPlaying ? ctl.pause() : ctl.play() : null,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          FittedBox(
+            fit: BoxFit.cover,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(width: ctl.value.size.width, height: ctl.value.size.height, child: VideoPlayer(ctl)),
+          ),
+          if (widget.controls)
+            ValueListenableBuilder<VideoPlayerValue>(
+              valueListenable: ctl,
+              builder: (context, v, _) => v.isPlaying ? const SizedBox() : playIcon(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class ReelCard extends StatelessWidget {
+  final Reel r;
+  const ReelCard(this.r, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: green, borderRadius: BorderRadius.circular(18), boxShadow: soft),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          VideoBox(r.src, poster: r.poster, lazy: true),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 26, 12, 10),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xCC000000)]),
+                ),
+                child: Text(r.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ---------- App ----------
 
 class CampApp extends StatelessWidget {
@@ -658,7 +842,7 @@ class _HeroBannerState extends State<HeroBanner> {
     super.initState();
     t = Timer.periodic(const Duration(seconds: 4), (_) {
       if (!pc.hasClients) return;
-      pc.animateToPage((i + 1) % photos.length, duration: const Duration(milliseconds: 700), curve: Curves.easeInOut);
+      pc.animateToPage((i + 1) % heroPics.length, duration: const Duration(milliseconds: 700), curve: Curves.easeInOut);
     });
   }
 
@@ -685,12 +869,14 @@ class _HeroBannerState extends State<HeroBanner> {
       child: Stack(
         children: [
           Positioned.fill(
-            child: PageView.builder(
-              controller: pc,
-              itemCount: photos.length,
-              onPageChanged: (v) => setState(() => i = v),
-              itemBuilder: (c, k) => Pic(photos[k]),
-            ),
+            child: (heroVideo.isNotEmpty && !wide)
+                ? VideoBox(heroVideo, poster: reels[0].poster, autoplay: true, loop: true, muted: true, controls: false)
+                : PageView.builder(
+                    controller: pc,
+                    itemCount: heroPics.length,
+                    onPageChanged: (v) => setState(() => i = v),
+                    itemBuilder: (c, k) => Pic(photos[heroPics[k]]),
+                  ),
           ),
           const Positioned.fill(
             child: IgnorePointer(
@@ -903,11 +1089,16 @@ class HomePage extends StatelessWidget {
             children: [
               for (final e in experiences)
                 Container(
-                  width: 150,
+                  width: 165,
                   margin: const EdgeInsets.only(right: 12),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [leaf, green], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    color: green,
+                    image: DecorationImage(
+                      image: AssetImage(photos[e.$4]),
+                      fit: BoxFit.cover,
+                      colorFilter: const ColorFilter.mode(Color(0x99000000), BlendMode.darken),
+                    ),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Column(
@@ -941,6 +1132,18 @@ class HomePage extends StatelessWidget {
               const Text('Use code DIRECT5 for 5% off, or CAMP10 for 10% off on 2+ nights.', style: TextStyle(color: green)),
               const SizedBox(height: 12),
               FilledButton(onPressed: () => tab.value = 3, child: const Text('Plan my stay')),
+            ],
+          ),
+        ),
+        const SectionTitle('Watch our camp'),
+        SizedBox(
+          height: 330,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              for (final r in reels)
+                Container(width: 190, margin: const EdgeInsets.only(right: 12), child: ReelCard(r)),
             ],
           ),
         ),
@@ -1234,8 +1437,46 @@ class GalleryPage extends StatelessWidget {
               for (int i = 0; i < photos.length; i++)
                 GestureDetector(
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Viewer(i))),
-                  child: ClipRRect(borderRadius: BorderRadius.circular(18), child: Pic(photos[i])),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Pic(photos[i]),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(10, 22, 10, 8),
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xCC000000)]),
+                            ),
+                            child: Text(captions[i % captions.length], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
+            ],
+          ),
+        )),
+        W(Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              label('Videos'),
+              GridView.count(
+                crossAxisCount: MediaQuery.sizeOf(context).width >= 900 ? 3 : 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 9 / 15,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [for (final r in reels) ReelCard(r)],
+              ),
             ],
           ),
         )),
@@ -1256,7 +1497,19 @@ class Viewer extends StatelessWidget {
       body: PageView.builder(
         controller: PageController(initialPage: start),
         itemCount: photos.length,
-        itemBuilder: (c, i) => InteractiveViewer(child: Center(child: Pic(photos[i], fit: BoxFit.contain))),
+        itemBuilder: (c, i) => Stack(
+          children: [
+            Positioned.fill(child: InteractiveViewer(child: Center(child: Pic(photos[i], fit: BoxFit.contain)))),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 28,
+              child: IgnorePointer(
+                child: Text(captions[i % captions.length], textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
