@@ -62,9 +62,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # App ka logo (file: <project>/assets/logo.png)
+  # App ka logo, photos aur videos (folder: <project>/assets/...)
   assets:
     - assets/logo.png
+    - assets/images/
+    - assets/videos/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
